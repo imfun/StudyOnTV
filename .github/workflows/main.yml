@@ -1,0 +1,53 @@
+name: Sync Releases and APKs
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # 每 6 小时自动检查一次
+  workflow_dispatch: # 允许手动点击触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 赋予写入权限以创建 Release 并上传 APK
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Fetch and Sync Upstream Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. 获取原仓库最新的 Release 信息
+          UPSTREAM_REPO="pengchujin/aerial-tv"
+          LATEST_RELEASE=$(gh release view --repo "$UPSTREAM_REPO" --json tagName,name,body,assets)
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tagName')
+          RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
+          RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
+
+          echo "原仓库最新版本为: $TAG_NAME"
+
+          # 2. 检查自己的仓库是否已经存在该版本
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "该版本在你的仓库中已存在，无需同步。"
+            exit 0
+          fi
+
+          echo "开始同步新版本 $TAG_NAME ..."
+
+          # 3. 下载原仓库该 Release 下的所有 APK 文件
+          mkdir -p downloads
+          gh release download "$TAG_NAME" --repo "$UPSTREAM_REPO" --dir downloads
+
+          # 4. 在你自己的仓库中创建同名的 Tag 和 Release，并把 APK 附件全部传上去
+          # 首先确保本地有这个 Tag（如果没有则创建一个临时 Tag 推送）
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@://github.com"
+          git tag "$TAG_NAME" || true
+          git push origin "$TAG_NAME" || true
+
+          # 创建 Release 并上传下载好的 APK 附件
+          gh release create "$TAG_NAME" downloads/* \
+            --title "$RELEASE_NAME" \
+            --notes "$RELEASE_BODY"
