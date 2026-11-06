@@ -20,7 +20,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 1. 获取原仓库最新的 Release 信息
-          UPSTREAM_REPO="pengchujin/aerial-tv"
+          UPSTREAM_REPO="chadyi/StudyOnTV"
           LATEST_RELEASE=$(gh release view --repo "$UPSTREAM_REPO" --json tagName,name,body,assets)
           TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tagName')
           RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
