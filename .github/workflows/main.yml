@@ -1,0 +1,47 @@
+name: Sync Releases and APKs
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # 每 6 小时自动检查一次
+  workflow_dispatch: # 允许手动点击触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 赋予写入权限以创建 Release 并上传 APK
+
+    steps:
+      - name: Fetch and Sync Upstream Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 🚨 请确认这里填的是 StudyOnTV 对应的【原仓库作者/原仓库名】
+          UPSTREAM_REPO="chadyi/StudyOnTV"
+          
+          # 1. 获取原仓库最新的 Release 信息
+          LATEST_RELEASE=$(gh release view --repo "$UPSTREAM_REPO" --json tagName,name,body)
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tagName')
+          RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
+          RELEASE_BODY=$(echo "$LATEST_RELEASE" | jq -r '.body')
+
+          echo "原仓库最新版本为: $TAG_NAME"
+
+          # 2. 检查自己的仓库是否已经存在该版本
+          if gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "该版本在你的仓库中已存在，无需同步。"
+            exit 0
+          fi
+
+          echo "开始同步新版本 $TAG_NAME ..."
+
+          # 3. 下载原仓库该 Release 下的所有附件
+          mkdir -p downloads
+          gh release download "$TAG_NAME" --repo "$UPSTREAM_REPO" --dir downloads
+
+          # 4. 直接基于当前仓库的 main 分支创建 Release 并上传附件（彻底绕过 git push 的工作流权限限制）
+          gh release create "$TAG_NAME" downloads/* \
+            --repo "${{ github.repository }}" \
+            --target "main" \
+            --title "$RELEASE_NAME" \
+            --notes "$RELEASE_BODY"
